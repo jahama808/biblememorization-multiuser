@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-stone-100 text-stone-800 antialiased;
+  background-image:
+    radial-gradient(1200px 500px at 50% -10%, rgb(199 210 254 / 0.45), transparent 60%),
+    linear-gradient(180deg, #f5f5f4 0%, #e7e5e4 100%);
+}
+
+#root {
+  @apply min-h-dvh;
+}
+
+.flip-card {
+  perspective: 1200px;
+}
+
+.flip-inner {
+  transform-style: preserve-3d;
+  transition: transform 450ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.flip-inner.is-flipped {
+  transform: rotateY(180deg);
+}
+
+.flip-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.flip-back {
+  transform: rotateY(180deg);
+}
