@@ -30,7 +30,7 @@ export function AdminLoginPage({ onSignedIn }: { onSignedIn: (mustChangePassword
           <CrossMark className="h-7 w-7" />
         </div>
         <h1 className="font-serif text-3xl text-stone-900">Scripture Memory · Admin</h1>
-        <p className="mt-2 text-sm text-stone-600">Email and password. Learners use a 6-digit code on the main app.</p>
+        <p className="mt-2 text-sm text-stone-600">Email and password. Learners use an email sign-in code on the main app.</p>
       </div>
       <Card>
         <form className="space-y-4" onSubmit={onSubmit}>

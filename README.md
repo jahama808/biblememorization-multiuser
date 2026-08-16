@@ -12,7 +12,7 @@ Vite · React · TypeScript · Tailwind CSS · React Router · Supabase (Auth + 
 
 ## Features
 
-- Email 6-digit OTP (`shouldCreateUser: false`; only existing or invited users can sign in)
+- Email OTP (`shouldCreateUser: false`; only existing or invited users can sign in)
 - Invite-only admin portal at `/admin` (Jay only; email + password, not OTP)
 - One active book per user; switching books deactivates the previous selection
 - Translation picker at book setup (CSB, NIV, and KJV are listed first when the API.Bible account includes them, plus every other version the key can access)
@@ -46,12 +46,12 @@ Routes: `/` home, `/book-setup`, `/practice`, `/stats`. Unknown learner paths re
 2. **Authentication → Email**
    - Keep email provider enabled.
    - Enable **Email** and **Email + Password** providers. Learners stay OTP-only. The admin portal at `/admin` uses email + password for `jay.garces@protonmail.com` only.
-   - Sign-in on the main app is a **6-digit email OTP only** (no magic link). The learner app does **not** create accounts (`shouldCreateUser: false`). Invite learners from `/admin/invite` (or Authentication → Users → Invite). Uninvited addresses get Supabase’s error (typically user not found / signups not allowed).
+   - Sign-in on the main app is an **email OTP only** (no magic link). The learner app does **not** create accounts (`shouldCreateUser: false`). Invite learners from `/admin/invite` (or Authentication → Users → Invite). Uninvited addresses get Supabase’s error (typically user not found / signups not allowed).
    - Edit the **Magic Link** template so `{{ .Token }}` is the primary content — the code, not a link:
 
 ```html
 <h2>Sign in to Scripture Memory</h2>
-<p>Enter this 6-digit code in the app:</p>
+<p>Enter this code in the app:</p>
 <p><strong>{{ .Token }}</strong></p>
 ```
 
@@ -122,7 +122,7 @@ Open `/admin`. Only `jay.garces@protonmail.com` (or `ADMIN_EMAIL`) can sign in.
 2. Set `ADMIN_BOOTSTRAP_PASSWORD` on Vercel (Jay’s bootstrap value). Do not commit it.
 3. Sign in at `/admin` with that email and the bootstrap password.
 4. The portal forces a password change. After that, the bootstrap password no longer works.
-5. Invite learners from **Invite**. They request a 6-digit code on the main app. Revoke bans the Auth user (reversible Restore).
+5. Invite learners from **Invite**. They request a sign-in code on the main app. Revoke bans the Auth user (reversible Restore).
 
 The password-changed flag is stored in Auth `app_metadata` (not user-editable `user_metadata`). Admin APIs verify the session email on every request and use the service role only on the server.
 
