@@ -2,7 +2,7 @@
 
 Hide God’s Word in your heart.
 
-A mobile-first web app for memorizing one Protestant book at a time with flip cards and a fixed Daily → Weekly → Quarterly calendar. New users can sign up. Each person’s books, chunks, trackers, and completions are isolated with Supabase Row Level Security.
+A mobile-first web app for memorizing one Protestant book at a time with flip cards and a fixed Daily → Weekly → Quarterly calendar. Accounts are invite-only: Jay creates users from the Supabase dashboard. Each person’s books, chunks, trackers, and completions are isolated with Supabase Row Level Security.
 
 This is a new app inspired by the live Scripture Memory product. It does **not** store a full-Bible verse table. Chapter and verse text is fetched on demand from [API.Bible](https://scripture.api.bible/) through a Vercel serverless function.
 
@@ -12,7 +12,7 @@ Vite · React · TypeScript · Tailwind CSS · React Router · Supabase (Auth + 
 
 ## Features
 
-- Email 6-digit OTP (`shouldCreateUser: true` so new users can sign up)
+- Email 6-digit OTP (`shouldCreateUser: false`; only existing or invited users can sign in)
 - One active book per user; switching books deactivates the previous selection
 - Translation picker at book setup (CSB, NIV, and KJV are listed first when the API.Bible account includes them, plus every other version the key can access)
 - Verse text from `/api/bible` (server-side `API_BIBLE_KEY` / `BIBLE_API_KEY` only)
@@ -44,7 +44,8 @@ Routes: `/` home, `/book-setup`, `/practice`, `/stats`. Unknown paths redirect h
    - Redirect URLs: add both `http://localhost:5173/**` and `https://YOUR_VERCEL_DOMAIN/**`.
 2. **Authentication → Email**
    - Keep email provider enabled.
-   - Sign-in is a **6-digit email OTP only** (no magic link). Edit the **Magic Link** template so `{{ .Token }}` is the primary content — the code, not a link:
+   - Sign-in is a **6-digit email OTP only** (no magic link). The app does **not** create accounts (`shouldCreateUser: false`). Invite users from **Authentication → Users → Invite**. Uninvited addresses get Supabase’s error (typically user not found / signups not allowed).
+   - Edit the **Magic Link** template so `{{ .Token }}` is the primary content — the code, not a link:
 
 ```html
 <h2>Sign in to Scripture Memory</h2>
@@ -52,7 +53,7 @@ Routes: `/` home, `/book-setup`, `/practice`, `/stats`. Unknown paths redirect h
 <p><strong>{{ .Token }}</strong></p>
 ```
 
-New users are created on first sign-in. A trigger inserts `user_profiles` with timezone `Pacific/Honolulu`.
+When an invited user is created in `auth.users`, a trigger inserts `user_profiles` with timezone `Pacific/Honolulu`.
 
 ## 2. Get an API.Bible key
 

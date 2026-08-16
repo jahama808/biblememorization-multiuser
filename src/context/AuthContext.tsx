@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            shouldCreateUser: true,
+            shouldCreateUser: false,
           },
         });
         if (error) throw error;

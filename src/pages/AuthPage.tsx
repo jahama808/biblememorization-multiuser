@@ -51,7 +51,8 @@ export function AuthPage() {
         <Card>
           <h2 className="font-serif text-2xl text-stone-900">Sign in</h2>
           <p className="mt-2 text-sm leading-relaxed text-stone-600">
-            We&apos;ll email you a 6-digit code. New accounts are created automatically.
+            We&apos;ll email you a 6-digit code. Sign-in is for existing or invited users only. New
+            accounts are created when Jay invites them in Supabase (Authentication → Users → Invite).
           </p>
 
           {!configured ? (
