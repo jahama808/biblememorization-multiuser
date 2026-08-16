@@ -12,7 +12,7 @@ Vite · React · TypeScript · Tailwind CSS · React Router · Supabase (Auth + 
 
 ## Features
 
-- Email magic link and 6-digit OTP (`shouldCreateUser: true` so new users can sign up)
+- Email 6-digit OTP (`shouldCreateUser: true` so new users can sign up)
 - One active book per user; switching books deactivates the previous selection
 - Translation picker at book setup (CSB, NIV, and KJV are listed first when the API.Bible account includes them, plus every other version the key can access)
 - Verse text from `/api/bible` (server-side `API_BIBLE_KEY` / `BIBLE_API_KEY` only)
@@ -44,12 +44,12 @@ Routes: `/` home, `/book-setup`, `/practice`, `/stats`. Unknown paths redirect h
    - Redirect URLs: add both `http://localhost:5173/**` and `https://YOUR_VERCEL_DOMAIN/**`.
 2. **Authentication → Email**
    - Keep email provider enabled.
-   - Edit the **Magic Link** template so it includes **both** the link and the 6-digit code:
+   - Sign-in is a **6-digit email OTP only** (no magic link). Edit the **Magic Link** template so `{{ .Token }}` is the primary content — the code, not a link:
 
 ```html
 <h2>Sign in to Scripture Memory</h2>
-<p><a href="{{ .ConfirmationURL }}">Open the magic link</a></p>
-<p>Or enter this code: <strong>{{ .Token }}</strong></p>
+<p>Enter this 6-digit code in the app:</p>
+<p><strong>{{ .Token }}</strong></p>
 ```
 
 New users are created on first sign-in. A trigger inserts `user_profiles` with timezone `Pacific/Honolulu`.

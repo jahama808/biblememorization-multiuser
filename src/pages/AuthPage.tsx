@@ -51,7 +51,7 @@ export function AuthPage() {
         <Card>
           <h2 className="font-serif text-2xl text-stone-900">Sign in</h2>
           <p className="mt-2 text-sm leading-relaxed text-stone-600">
-            We&apos;ll email you a magic sign-in link and a one-time code. New accounts are created automatically.
+            We&apos;ll email you a 6-digit code. New accounts are created automatically.
           </p>
 
           {!configured ? (
@@ -97,7 +97,7 @@ export function AuthPage() {
             </form>
           )}
 
-          <p className="mt-5 text-center text-xs text-stone-500">No password required. We use magic links for security.</p>
+          <p className="mt-5 text-center text-xs text-stone-500">No password required. Enter the 6-digit code from your email.</p>
         </Card>
       </div>
     </Screen>
