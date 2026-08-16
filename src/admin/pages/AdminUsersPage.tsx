@@ -44,7 +44,7 @@ export function AdminUsersPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-serif text-3xl text-stone-900">Users</h1>
-          <p className="mt-1 text-sm text-stone-500">Who can request a 6-digit code on the main app.</p>
+          <p className="mt-1 text-sm text-stone-500">Who can request a sign-in code on the main app.</p>
         </div>
         <Link
           to="/admin/invite"

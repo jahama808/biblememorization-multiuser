@@ -51,7 +51,7 @@ export function AuthPage() {
         <Card>
           <h2 className="font-serif text-2xl text-stone-900">Sign in</h2>
           <p className="mt-2 text-sm leading-relaxed text-stone-600">
-            We&apos;ll email you a 6-digit code. Sign-in is for existing or invited users only. New
+            We&apos;ll email you a sign-in code. Sign-in is for existing or invited users only. New
             accounts are created when Jay invites them in Supabase (Authentication → Users → Invite).
           </p>
 
@@ -74,15 +74,16 @@ export function AuthPage() {
               </div>
               {sent ? (
                 <div>
-                  <FieldLabel>6-digit code</FieldLabel>
+                  <FieldLabel>Sign-in code</FieldLabel>
                   <TextInput
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     required
-                    maxLength={6}
+                    minLength={6}
+                    maxLength={10}
                     value={code}
-                    onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="123456"
+                    onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="Enter the code from your email"
                   />
                 </div>
               ) : null}
@@ -98,7 +99,7 @@ export function AuthPage() {
             </form>
           )}
 
-          <p className="mt-5 text-center text-xs text-stone-500">No password required. Enter the 6-digit code from your email.</p>
+          <p className="mt-5 text-center text-xs text-stone-500">No password required. Enter the code from your email.</p>
         </Card>
       </div>
     </Screen>

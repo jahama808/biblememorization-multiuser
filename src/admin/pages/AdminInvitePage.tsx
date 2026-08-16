@@ -15,7 +15,7 @@ export function AdminInvitePage() {
     setBusy(true);
     try {
       const result = await adminApi.invite(email.trim());
-      setSuccess(`${result.user.email} can now request a 6-digit code on the main app.`);
+      setSuccess(`${result.user.email} can now request a sign-in code on the main app.`);
       setEmail('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not invite that email');
@@ -28,7 +28,7 @@ export function AdminInvitePage() {
     <div className="max-w-lg">
       <h1 className="font-serif text-3xl text-stone-900">Invite</h1>
       <p className="mt-2 text-sm text-stone-600">
-        Add a learner email here. The main app does not allow self-signup. They sign in with a 6-digit email code.
+        Add a learner email here. The main app does not allow self-signup. They sign in with an email code.
       </p>
       <Card className="mt-5">
         <form className="space-y-4" onSubmit={onSubmit}>
