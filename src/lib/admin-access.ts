@@ -1,3 +1,4 @@
+/** Shared with the serverless admin handler in api/admin.ts — keep the two copies aligned. */
 export const DEFAULT_ADMIN_EMAIL = 'jay.garces@protonmail.com';
 export const ADMIN_PASSWORD_CHANGED_KEY = 'admin_password_changed';
 
