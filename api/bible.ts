@@ -24,7 +24,14 @@ function toCache(key: string, value: unknown) {
   memoryCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
 }
 
-async function bibleGet(path: string): Promise<unknown> {
+/** List endpoints reject unknown query params (including fums-version). */
+export function scriptureApiUrl(path: string, includeFums = false): string {
+  if (!includeFums) return `${API_BASE}${path}`;
+  const separator = path.includes('?') ? '&' : '?';
+  return `${API_BASE}${path}${separator}fums-version=3`;
+}
+
+async function bibleGet(path: string, options?: { fums?: boolean }): Promise<unknown> {
   const cached = fromCache<unknown>(path);
   if (cached) return cached;
 
@@ -33,8 +40,7 @@ async function bibleGet(path: string): Promise<unknown> {
     throw Object.assign(new Error('API_BIBLE_KEY is not configured'), { status: 500 });
   }
 
-  const separator = path.includes('?') ? '&' : '?';
-  const url = `${API_BASE}${path}${separator}fums-version=3`;
+  const url = scriptureApiUrl(path, options?.fums === true);
   const response = await fetch(url, { headers: { 'api-key': key } });
   const body = await response.json().catch(() => ({}));
 
@@ -169,7 +175,6 @@ function chapterNumberFromId(chapterId: string): number {
 async function fetchBook(bibleId: string, bookId: string) {
   const chaptersBody = (await bibleGet(`/bibles/${bibleId}/books/${bookId}/chapters`)) as {
     data?: Array<{ id: string; number: string }>;
-    meta?: { fumsToken?: string };
   };
 
   const chapters = (chaptersBody.data ?? []).filter((chapter) => {
@@ -178,7 +183,6 @@ async function fetchBook(bibleId: string, bookId: string) {
   });
 
   const fumsTokens: string[] = [];
-  if (chaptersBody.meta?.fumsToken) fumsTokens.push(chaptersBody.meta.fumsToken);
 
   const verses: VersePayload[] = [];
   const copyrights = new Set<string>();
@@ -192,7 +196,7 @@ async function fetchBook(bibleId: string, bookId: string) {
           `/bibles/${bibleId}/chapters/${chapter.id}` +
           `?content-type=html&include-notes=false&include-titles=false` +
           `&include-chapter-numbers=false&include-verse-numbers=true`;
-        return bibleGet(path) as Promise<{
+        return bibleGet(path, { fums: true }) as Promise<{
           data?: { content?: unknown; copyright?: string };
           meta?: { fumsToken?: string };
         }>;
