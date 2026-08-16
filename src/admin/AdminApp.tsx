@@ -48,7 +48,7 @@ export function AdminApp() {
     return (
       <Routes>
         <Route
-          path="/admin/change-password"
+          path="change-password"
           element={
             <AdminChangePasswordPage
               onChanged={() => {
@@ -66,7 +66,7 @@ export function AdminApp() {
   return (
     <Routes>
       <Route
-        path="/admin"
+        path="/"
         element={
           <AdminLayout
             email={email}
