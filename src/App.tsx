@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { AdminApp } from './admin/AdminApp';
 import { Layout } from './components/Layout';
 import { useAuth } from './context/AuthContext';
 import { AuthPage } from './pages/AuthPage';
@@ -7,7 +8,7 @@ import { HomePage } from './pages/HomePage';
 import { PracticePage } from './pages/PracticePage';
 import { StatsPage } from './pages/StatsPage';
 
-export default function App() {
+function LearnerApp() {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -31,6 +32,15 @@ export default function App() {
         <Route path="/stats" element={<StatsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/admin/*" element={<AdminApp />} />
+      <Route path="*" element={<LearnerApp />} />
     </Routes>
   );
 }

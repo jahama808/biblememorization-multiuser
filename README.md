@@ -13,6 +13,7 @@ Vite · React · TypeScript · Tailwind CSS · React Router · Supabase (Auth + 
 ## Features
 
 - Email 6-digit OTP (`shouldCreateUser: false`; only existing or invited users can sign in)
+- Invite-only admin portal at `/admin` (Jay only; email + password, not OTP)
 - One active book per user; switching books deactivates the previous selection
 - Translation picker at book setup (CSB, NIV, and KJV are listed first when the API.Bible account includes them, plus every other version the key can access)
 - Verse text from `/api/bible` (server-side `API_BIBLE_KEY` / `BIBLE_API_KEY` only)
@@ -27,7 +28,7 @@ Vite · React · TypeScript · Tailwind CSS · React Router · Supabase (Auth + 
 - Home/stats: Daily streak, phase counts, upcoming graduations, next queued chunk, book progress
 - Default timezone `Pacific/Honolulu`, stored on `user_profiles`
 
-Routes: `/` home, `/book-setup`, `/practice`, `/stats`. Unknown paths redirect home.
+Routes: `/` home, `/book-setup`, `/practice`, `/stats`. Unknown learner paths redirect home. Admin: `/admin`.
 
 ## 1. Create a Supabase project
 
@@ -44,7 +45,8 @@ Routes: `/` home, `/book-setup`, `/practice`, `/stats`. Unknown paths redirect h
    - Redirect URLs: add both `http://localhost:5173/**` and `https://YOUR_VERCEL_DOMAIN/**`.
 2. **Authentication → Email**
    - Keep email provider enabled.
-   - Sign-in is a **6-digit email OTP only** (no magic link). The app does **not** create accounts (`shouldCreateUser: false`). Invite users from **Authentication → Users → Invite**. Uninvited addresses get Supabase’s error (typically user not found / signups not allowed).
+   - Enable **Email** and **Email + Password** providers. Learners stay OTP-only. The admin portal at `/admin` uses email + password for `jay.garces@protonmail.com` only.
+   - Sign-in on the main app is a **6-digit email OTP only** (no magic link). The learner app does **not** create accounts (`shouldCreateUser: false`). Invite learners from `/admin/invite` (or Authentication → Users → Invite). Uninvited addresses get Supabase’s error (typically user not found / signups not allowed).
    - Edit the **Magic Link** template so `{{ .Token }}` is the primary content — the code, not a link:
 
 ```html
@@ -74,15 +76,18 @@ Fill in `.env`:
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 API_BIBLE_KEY=your-api-bible-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+ADMIN_BOOTSTRAP_PASSWORD=
+ADMIN_EMAIL=jay.garces@protonmail.com
 ```
 
-Use the **anon / publishable** key in the client, never the service role key.
+Use the **anon / publishable** key in the client. Never put `SUPABASE_SERVICE_ROLE_KEY` or `ADMIN_BOOTSTRAP_PASSWORD` in a `VITE_` variable.
 
 ```bash
 npm run dev
 ```
 
-Vite serves the app at http://localhost:5173 and proxies `/api/bible` through the same handler used on Vercel.
+Vite serves the app at http://localhost:5173 and proxies `/api/bible` and `/api/admin/*` through the same handlers used on Vercel.
 
 ```bash
 npm test
@@ -100,11 +105,26 @@ npm run build
 | `VITE_SUPABASE_URL` | Browser (Supabase client) |
 | `VITE_SUPABASE_ANON_KEY` | Browser (Supabase client) |
 | `API_BIBLE_KEY` | Server only (`/api/bible`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only (`/api/admin/*`) |
+| `ADMIN_BOOTSTRAP_PASSWORD` | Server only (first `/admin` login) |
+| `ADMIN_EMAIL` | Server only (defaults to `jay.garces@protonmail.com`) |
 
-`BIBLE_API_KEY` is accepted as an alias for the Bible key.
+`BIBLE_API_KEY` is accepted as an alias for the Bible key. Do not put the service role key or bootstrap password in any `VITE_` variable.
 
 4. Deploy. Then set the Supabase Site URL and redirect URLs to the Vercel domain.
-5. `vercel.json` rewrites unknown paths to `index.html` so React Router works, while `/api/bible` stays a serverless function.
+5. `vercel.json` rewrites unknown paths to `index.html` so React Router works, while `/api/*` stays serverless.
+
+### Admin portal
+
+Open `/admin`. Only `jay.garces@protonmail.com` (or `ADMIN_EMAIL`) can sign in.
+
+1. Enable **Email + Password** in Supabase Auth (learners still use OTP on `/`).
+2. Set `ADMIN_BOOTSTRAP_PASSWORD` on Vercel (Jay’s bootstrap value). Do not commit it.
+3. Sign in at `/admin` with that email and the bootstrap password.
+4. The portal forces a password change. After that, the bootstrap password no longer works.
+5. Invite learners from **Invite**. They request a 6-digit code on the main app. Revoke bans the Auth user (reversible Restore).
+
+The password-changed flag is stored in Auth `app_metadata` (not user-editable `user_metadata`). Admin APIs verify the session email on every request and use the service role only on the server.
 
 ## Data model (user data only)
 
