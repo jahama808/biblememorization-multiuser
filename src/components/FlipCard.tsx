@@ -21,7 +21,7 @@ export function FlipCard({
   onFlip: () => void;
 }) {
   return (
-    <button type="button" onClick={onFlip} className="flip-card block w-full text-left">
+    <button type="button" onClick={onFlip} className="flip-card relative block min-h-[22rem] w-full text-left">
       <div className={`flip-inner relative min-h-[22rem] ${flipped ? 'is-flipped' : ''}`}>
         <div className="flip-face absolute inset-0 rounded-3xl border border-indigo-100 bg-indigo-950 p-6 text-indigo-50 shadow-card">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-200">{phaseLabel[phase]}</p>

@@ -201,7 +201,6 @@ export function BookSetupPage() {
       {step === 'chunks' && book ? (
         <ChunkEditor
           bookName={book.name}
-          verses={verses}
           drafts={drafts}
           copyright={copyright}
           busy={busy}
@@ -262,7 +261,6 @@ export function BookSetupPage() {
 
 function ChunkEditor({
   bookName,
-  verses,
   drafts,
   copyright,
   busy,
@@ -272,7 +270,6 @@ function ChunkEditor({
   onNext,
 }: {
   bookName: string;
-  verses: Verse[];
   drafts: DraftChunk[];
   copyright: string | null;
   busy: boolean;
