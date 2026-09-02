@@ -1,4 +1,5 @@
 import { addDays, dayOfWeek, nextSundayOnOrAfter, todayInTimeZone } from './dates';
+import { completedChunkIdsOnDate, nextSessionByChunk, remainingDueItems } from './practice';
 import {
   applyGraduations,
   dailyStreak,
@@ -285,18 +286,16 @@ export async function writePracticeCompletions(
     .in('chunk_id', chunkIds);
   if (existingError) throw existingError;
 
-  const maxSession = new Map<string, number>();
-  for (const row of existing ?? []) {
-    const current = maxSession.get(row.chunk_id) ?? 0;
-    maxSession.set(row.chunk_id, Math.max(current, row.session_number));
-  }
+  // Extra practice writes session 2, 3, … for the same day. It does not
+  // update trackers or due dates — see src/lib/practice.ts.
+  const sessionByChunk = nextSessionByChunk(existing ?? [], chunkIds);
 
   const rows = items.map((item) => ({
     user_id: userId,
     chunk_id: item.chunkId,
     completed_date: today,
     phase_at_completion: item.phase,
-    session_number: (maxSession.get(item.chunkId) ?? 0) + 1,
+    session_number: sessionByChunk.get(item.chunkId) ?? 1,
   }));
 
   const { error } = await client.from('daily_completions').insert(rows);
@@ -312,10 +311,8 @@ export function summarizeState(state: BookState) {
     .filter((completion) => completion.phase_at_completion === 'DAILY')
     .map((completion) => completion.completed_date);
   const streak = dailyStreak(dailyDates, state.today);
-  const completedToday = new Set(
-    state.completions.filter((completion) => completion.completed_date === state.today).map((c) => c.chunk_id),
-  );
-  const dueRemaining = due.filter((item) => !completedToday.has(item.chunk.id));
+  const completedToday = completedChunkIdsOnDate(state.completions, state.today);
+  const dueRemaining = remainingDueItems(due, completedToday);
 
   return {
     counts,

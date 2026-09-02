@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { FlipCard } from '../components/FlipCard';
 import { Button, Card, ErrorNote, Screen } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { loadBookState, summarizeState, syncSchedule, writePracticeCompletions, type BookState } from '../lib/data';
+import { practiceModeFromSearch, selectPracticeQueue } from '../lib/practice';
 import type { PracticeItem } from '../lib/types';
 
 export function PracticePage() {
   const { user } = useAuth();
+  const location = useLocation();
   const [state, setState] = useState<BookState | null>(null);
+  const [dueItems, setDueItems] = useState<PracticeItem[]>([]);
   const [queue, setQueue] = useState<PracticeItem[]>([]);
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -25,10 +28,15 @@ export function PracticePage() {
         const loaded = await loadBookState(user.id);
         const synced = loaded.book ? await syncSchedule(loaded) : loaded;
         if (!active) return;
+        const summary = summarizeState(synced);
+        const mode = practiceModeFromSearch(location.search);
+        const items = selectPracticeQueue(summary, mode);
         setState(synced);
-        const remaining = summarizeState(synced).dueRemaining;
-        setQueue(remaining);
-        setDone(remaining.length === 0);
+        setDueItems(summary.due);
+        setQueue(items);
+        setIndex(0);
+        setFlipped(false);
+        setDone(items.length === 0);
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Could not load practice');
       } finally {
@@ -38,10 +46,19 @@ export function PracticePage() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, location.search]);
 
   const current = queue[index] ?? null;
   const progress = useMemo(() => (queue.length ? `${index + 1} of ${queue.length}` : '0 of 0'), [index, queue.length]);
+  const reviewAvailable = dueItems.length > 0;
+
+  function startAgain() {
+    setQueue(dueItems);
+    setIndex(0);
+    setFlipped(false);
+    setDone(false);
+    setError(null);
+  }
 
   async function finish() {
     if (!user || !state) return;
@@ -54,7 +71,10 @@ export function PracticePage() {
         state.today,
       );
       const refreshed = await loadBookState(user.id, state.today);
-      await syncSchedule(refreshed);
+      const synced = await syncSchedule(refreshed);
+      const summary = summarizeState(synced);
+      setState(synced);
+      setDueItems(summary.due);
       setDone(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save completions');
@@ -88,15 +108,22 @@ export function PracticePage() {
       <Screen>
         <h1 className="font-serif text-3xl text-stone-900">Practice</h1>
         <Card className="mt-5">
-          <p className="font-serif text-2xl text-stone-900">{queue.length ? 'Session complete' : 'Nothing due today'}</p>
+          <p className="font-serif text-2xl text-stone-900">{reviewAvailable ? 'Session complete' : 'Nothing due today'}</p>
           <p className="mt-2 text-sm text-stone-600">
-            {queue.length
-              ? 'Completions are saved. Daily chunks graduate after 49 days; weekly chunks after 213 days.'
+            {reviewAvailable
+              ? 'Completions are saved. Daily chunks graduate after 49 days; weekly chunks after 213 days. Extra practice does not change due dates.'
               : 'Weekly cards appear on their assigned weekday. Quarterly cards appear on their assigned Sunday.'}
           </p>
+          {reviewAvailable ? (
+            <Button className="mt-4 w-full" onClick={startAgain}>
+              Practice again
+            </Button>
+          ) : null}
           <Link
             to="/"
-            className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-indigo-700 text-sm font-semibold text-white"
+            className={`${reviewAvailable ? 'mt-3' : 'mt-4'} inline-flex min-h-12 w-full items-center justify-center rounded-2xl ${
+              reviewAvailable ? 'bg-stone-200 text-stone-800' : 'bg-indigo-700 text-white'
+            } text-sm font-semibold`}
           >
             Back home
           </Link>

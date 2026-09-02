@@ -19,7 +19,7 @@ Vite · React · TypeScript · Tailwind CSS · React Router · Supabase (Auth + 
 - Verse text from `/api/bible` (server-side `API_BIBLE_KEY` / `BIBLE_API_KEY` only)
 - Tap between verses to set chunk breaks targeting 25–40 words
 - Optional onboarding: already-memorized chunks can start in Daily, Weekly, or Quarterly
-- Flip-card practice (reference on the front, text on the back)
+- Flip-card practice (reference on the front, text on the back). After the first finish of the day, Home **Review practice** and the session **Practice again** button reopen the same due cards. Extra reps write another `daily_completions` row (`session_number` 2, 3, …) and do not change due dates or Queue promotions. See `src/lib/practice.ts`.
 - Fixed schedule, not SM-2:
   - **Daily** every day; graduate to Weekly after 49 days from `week_started`
   - **Weekly** on an assigned `review_day_of_week`; graduate to Quarterly after 213 days from `phase_start_date`

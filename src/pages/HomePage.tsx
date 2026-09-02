@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, ErrorNote, Screen, Stat } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { chunkLabel, loadBookState, summarizeState, syncSchedule, type BookState } from '../lib/data';
+import { homePracticePath } from '../lib/practice';
 import { formatChunkReference } from '../lib/schedule';
 import { WEEKDAY_NAMES } from '../lib/types';
 
@@ -87,7 +88,9 @@ export function HomePage() {
         <h2 className="font-serif text-xl text-stone-900">Today</h2>
         {summary.dueRemaining.length === 0 ? (
           <p className="mt-2 text-sm text-stone-600">
-            {summary.due.length ? 'Today’s cards are finished. Come back tomorrow.' : 'Nothing is due today. New Daily chunks start on their assigned Monday.'}
+            {summary.due.length
+              ? 'Today’s cards are finished. Practice them again any time — extra reps do not change the schedule.'
+              : 'Nothing is due today. New Daily chunks start on their assigned Monday.'}
           </p>
         ) : (
           <p className="mt-2 text-sm text-stone-600">
@@ -98,7 +101,7 @@ export function HomePage() {
           </p>
         )}
         <Link
-          to="/practice"
+          to={homePracticePath(summary)}
           className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-indigo-700 px-4 text-sm font-semibold text-white"
         >
           {summary.dueRemaining.length ? 'Start practice' : 'Review practice'}
