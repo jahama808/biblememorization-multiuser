@@ -31,6 +31,16 @@ export function completionHistoryStartDate(today: string): string {
   return addDays(today, -COMPLETION_HISTORY_DAYS);
 }
 
+export function completionHistoryEndDate(today: string): string {
+  return today;
+}
+
+export function matchesCompletionHistoryWindow(completedDate: string, today: string): boolean {
+  return (
+    completedDate >= completionHistoryStartDate(today) && completedDate <= completionHistoryEndDate(today)
+  );
+}
+
 export type BookState = {
   profile: UserProfile;
   book: BookSelection | null;
@@ -104,6 +114,7 @@ export async function loadBookState(userId: string, todayHint?: string): Promise
     .select('id, user_id, chunk_id, completed_date, phase_at_completion, session_number')
     .eq('user_id', userId)
     .gte('completed_date', completionHistoryStartDate(today))
+    .lte('completed_date', completionHistoryEndDate(today))
     .order('completed_date', { ascending: false });
   if (completionError) throw completionError;
 
@@ -292,6 +303,15 @@ export function isUniqueViolation(error: PostgrestError | null): boolean {
   return error?.code === '23505';
 }
 
+function logPracticeSaveError(cause: unknown): void {
+  console.error('Practice completion save failed', cause);
+}
+
+function throwPracticeSaveFailed(cause: unknown): never {
+  logPracticeSaveError(cause);
+  throw new Error(PRACTICE_SAVE_FAILED_MESSAGE);
+}
+
 export function buildPracticeCompletionRows(
   userId: string,
   items: { chunkId: string; phase: Phase }[],
@@ -349,17 +369,22 @@ export async function writePracticeCompletions(
     return error;
   }
 
-  // Extra practice writes session 2, 3, … for the same day. It does not
-  // update trackers or due dates — see src/lib/practice.ts.
-  let error = await insertBatch();
-  if (isUniqueViolation(error)) {
-    error = await insertBatch();
-    if (error) {
-      throw new Error(isUniqueViolation(error) ? PRACTICE_SAVE_FAILED_MESSAGE : error.message);
+  try {
+    // Extra practice writes session 2, 3, … for the same day. It does not
+    // update trackers or due dates — see src/lib/practice.ts.
+    let error = await insertBatch();
+    if (isUniqueViolation(error)) {
+      error = await insertBatch();
     }
-    return;
+    if (error) {
+      throwPracticeSaveFailed(error);
+    }
+  } catch (cause) {
+    if (cause instanceof Error && cause.message === PRACTICE_SAVE_FAILED_MESSAGE) {
+      throw cause;
+    }
+    throwPracticeSaveFailed(cause);
   }
-  if (error) throw error;
 }
 
 export function summarizeState(state: BookState) {

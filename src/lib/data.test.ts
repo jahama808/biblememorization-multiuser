@@ -11,9 +11,11 @@ vi.mock('./supabase', () => ({
 import {
   COMPLETION_HISTORY_DAYS,
   buildPracticeCompletionRows,
+  completionHistoryEndDate,
   completionHistoryStartDate,
   dedupePracticeItems,
   isUniqueViolation,
+  matchesCompletionHistoryWindow,
   summarizeState,
   writePracticeCompletions,
   type BookState,
@@ -90,7 +92,7 @@ type QueryResult = { data: unknown; error: PostgrestError | null };
 
 function createQueryChain(result: QueryResult | (() => QueryResult | Promise<QueryResult>)) {
   const chain: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'gte', 'in', 'order', 'insert']) {
+  for (const method of ['select', 'eq', 'gte', 'lte', 'in', 'order', 'insert']) {
     chain[method] = vi.fn(() => chain);
   }
   chain.then = (
@@ -100,9 +102,9 @@ function createQueryChain(result: QueryResult | (() => QueryResult | Promise<Que
   return chain;
 }
 
-function uniqueViolation(message = 'duplicate key value violates unique constraint'): PostgrestError {
+function postgresError(code: string, message: string): PostgrestError {
   return {
-    code: '23505',
+    code,
     message,
     details: '',
     hint: '',
@@ -113,6 +115,40 @@ function uniqueViolation(message = 'duplicate key value violates unique constrai
 describe('completion history window', () => {
   it('loads a fixed day window instead of a row cap', () => {
     expect(completionHistoryStartDate('2026-08-17')).toBe(addDays('2026-08-17', -COMPLETION_HISTORY_DAYS));
+    expect(completionHistoryEndDate('2026-08-17')).toBe('2026-08-17');
+  });
+
+  it('excludes future-dated completions from the closed history window', () => {
+    const today = '2026-08-17';
+    const futureDate = addDays(today, 1);
+    const pastDate = addDays(today, -1);
+    const tooOldDate = addDays(today, -(COMPLETION_HISTORY_DAYS + 1));
+
+    expect(matchesCompletionHistoryWindow(today, today)).toBe(true);
+    expect(matchesCompletionHistoryWindow(pastDate, today)).toBe(true);
+    expect(matchesCompletionHistoryWindow(futureDate, today)).toBe(false);
+    expect(matchesCompletionHistoryWindow(tooOldDate, today)).toBe(false);
+
+    const allCompletions = [
+      completion('c0', today),
+      completion('c0', pastDate),
+      completion('c0', futureDate),
+    ];
+    const windowed = allCompletions.filter((row) => matchesCompletionHistoryWindow(row.completed_date, today));
+
+    expect(windowed.map((row) => row.completed_date)).toEqual([today, pastDate]);
+    expect(windowed.some((row) => row.completed_date === futureDate)).toBe(false);
+
+    const base = {
+      chunks: [chunk('c0', 1)],
+      trackers: [tracker({ id: 't0', chunk_id: 'c0', phase: 'DAILY', week_started: addDays(today, -90) })],
+      today,
+    };
+    const streakWithWindow = summarizeState(state({ ...base, completions: windowed })).streak;
+    const streakIfFutureLoaded = summarizeState(state({ ...base, completions: allCompletions })).streak;
+
+    expect(streakWithWindow).toBe(2);
+    expect(streakIfFutureLoaded).toBe(2);
   });
 
   it('keeps a long streak when many same-day practice sessions inflate row counts', () => {
@@ -219,7 +255,7 @@ describe('writePracticeCompletions', () => {
         insertCount += 1;
         return createQueryChain({
           data: null,
-          error: insertCount === 1 ? uniqueViolation() : null,
+          error: insertCount === 1 ? postgresError('23505', 'duplicate key value violates unique constraint') : null,
         });
       });
       return chain;
@@ -242,7 +278,7 @@ describe('writePracticeCompletions', () => {
           error: null,
         }),
       );
-      chain.insert = vi.fn(() => createQueryChain({ data: null, error: uniqueViolation() }));
+      chain.insert = vi.fn(() => createQueryChain({ data: null, error: postgresError('23505', 'duplicate key value violates unique constraint') }));
       return chain;
     });
 
@@ -250,14 +286,77 @@ describe('writePracticeCompletions', () => {
       writePracticeCompletions('u', [{ chunkId: 'a', phase: 'DAILY' }], '2026-08-17'),
     ).rejects.toThrow('Could not save your practice session');
   });
+
+  it('returns a friendly message on a non-23505 write failure', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      expect(table).toBe('daily_completions');
+      const chain = createQueryChain({ data: null, error: null });
+      chain.select = vi.fn(() =>
+        createQueryChain({
+          data: [{ chunk_id: 'a', session_number: 1 }],
+          error: null,
+        }),
+      );
+      chain.insert = vi.fn(() =>
+        createQueryChain({
+          data: null,
+          error: postgresError('42501', 'permission denied for table daily_completions'),
+        }),
+      );
+      return chain;
+    });
+
+    try {
+      await writePracticeCompletions('u', [{ chunkId: 'a', phase: 'DAILY' }], '2026-08-17');
+      expect.fail('expected writePracticeCompletions to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain('Could not save your practice session');
+      expect((error as Error).message).not.toContain('permission denied for table daily_completions');
+    }
+  });
+
+  it('returns a friendly message when the retry fails with a non-23505 error', async () => {
+    let insertCount = 0;
+
+    mockFrom.mockImplementation((table: string) => {
+      expect(table).toBe('daily_completions');
+      const chain = createQueryChain({ data: null, error: null });
+      chain.select = vi.fn(() =>
+        createQueryChain({
+          data: [{ chunk_id: 'a', session_number: 1 }],
+          error: null,
+        }),
+      );
+      chain.insert = vi.fn(() => {
+        insertCount += 1;
+        return createQueryChain({
+          data: null,
+          error:
+            insertCount === 1
+              ? postgresError('23505', 'duplicate key value violates unique constraint')
+              : postgresError('57014', 'canceling statement due to statement timeout'),
+        });
+      });
+      return chain;
+    });
+
+    try {
+      await writePracticeCompletions('u', [{ chunkId: 'a', phase: 'DAILY' }], '2026-08-17');
+      expect.fail('expected writePracticeCompletions to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain('Could not save your practice session');
+      expect((error as Error).message).not.toContain('canceling statement due to statement timeout');
+    }
+    expect(insertCount).toBe(2);
+  });
 });
 
 describe('isUniqueViolation', () => {
   it('detects Postgres duplicate-key errors', () => {
-    expect(isUniqueViolation(uniqueViolation())).toBe(true);
-    expect(isUniqueViolation({ code: '42501', message: 'permission denied', details: '', hint: '', name: 'PostgrestError' } as PostgrestError)).toBe(
-      false,
-    );
+    expect(isUniqueViolation(postgresError('23505', 'duplicate key value violates unique constraint'))).toBe(true);
+    expect(isUniqueViolation(postgresError('42501', 'permission denied'))).toBe(false);
     expect(isUniqueViolation(null)).toBe(false);
   });
 });
