@@ -109,27 +109,52 @@ export type QueuePromotion = {
 };
 
 /**
- * Unused chunks wait in the queue.
- * If Daily is empty, promote up to 7 (staggered weekly, start next Monday).
- * If Daily has fewer than 7, promote 1 more (starts today).
+ * Queue promotion policy — new scripture enters Daily only when the learner
+ * has begun every chunk that is currently due, and nothing is already waiting
+ * in the future.
+ *
+ * Promote AT MOST ONE queued chunk when ALL of these hold:
+ * 1. A queued chunk exists (no tracker yet).
+ * 2. Total DAILY trackers is below DAILY_CAP (7).
+ * 3. Every due DAILY tracker (week_started <= today) has at least one
+ *    daily_completions row for its chunk — any date, any session_number.
+ *    One completion ever is enough; this is "have they begun it".
+ * 4. No pending DAILY tracker (week_started > today). Keeps exactly one
+ *    chunk in flight and prevents two chunks landing on the same Monday.
+ * 5. No DAILY tracker already has week_started = nextMonday(today). At most
+ *    one queue-promoted chunk may land on a given Monday, even if the learner
+ *    practices every due chunk that same day. Book-setup onboarding may still
+ *    create several DAILY trackers with the same week_started; that path never
+ *    calls this function.
+ *
+ * On promotion, week_started = nextMonday(today). If today is Monday, that
+ * is today; otherwise the next Monday. A learner gets at most one new chunk
+ * per Monday pace, and repeated Home/Practice loads cannot queue extra
+ * promotions while the current chunk is un-started.
  */
-export function planQueuePromotions(dailyCount: number, queued: Chunk[], today: string): QueuePromotion[] {
+export type QueuePromotionInput = {
+  queued: Chunk[];
+  today: string;
+  dailyTrackers: MemorizationTracker[];
+  startedChunkIds: Set<string>;
+};
+
+export function planQueuePromotions(input: QueuePromotionInput): QueuePromotion[] {
+  const { queued, today, dailyTrackers, startedChunkIds } = input;
+
   if (queued.length === 0) return [];
 
-  if (dailyCount === 0) {
-    const take = queued.slice(0, DAILY_CAP);
-    const start = nextMonday(today);
-    return take.map((chunk, index) => ({
-      chunk,
-      week_started: addDays(start, index * 7),
-    }));
-  }
+  if (dailyTrackers.length >= DAILY_CAP) return [];
 
-  if (dailyCount < DAILY_CAP) {
-    return [{ chunk: queued[0], week_started: today }];
-  }
+  if (dailyTrackers.some((tracker) => tracker.week_started > today)) return [];
 
-  return [];
+  const dueDaily = dailyTrackers.filter((tracker) => tracker.week_started <= today);
+  if (!dueDaily.every((tracker) => startedChunkIds.has(tracker.chunk_id))) return [];
+
+  const promotionMonday = nextMonday(today);
+  if (dailyTrackers.some((tracker) => tracker.week_started === promotionMonday)) return [];
+
+  return [{ chunk: queued[0], week_started: promotionMonday }];
 }
 
 export function trackerDraftFromPromotion(userChunkId: string, weekStarted: string): TrackerDraft {

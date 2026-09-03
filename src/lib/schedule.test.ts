@@ -11,7 +11,7 @@ import {
   shouldGraduateDaily,
   shouldGraduateWeekly,
 } from './schedule';
-import type { Chunk, MemorizationTracker, Verse } from './types';
+import type { Chunk, DailyCompletion, MemorizationTracker, Verse } from './types';
 
 function chunk(id: string, order: number): Chunk {
   return {
@@ -92,26 +92,182 @@ describe('graduation', () => {
   });
 });
 
+function completion(chunkId: string, date = '2026-08-16'): DailyCompletion {
+  return {
+    id: `comp-${chunkId}`,
+    user_id: 'u',
+    chunk_id: chunkId,
+    completed_date: date,
+    phase_at_completion: 'DAILY',
+    session_number: 1,
+  };
+}
+
 describe('queue promotion', () => {
   const queued = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => chunk(`c${n}`, n));
+  const today = '2026-08-16';
 
-  it('promotes up to 7 staggered from next Monday when Daily is empty', () => {
-    const promotions = planQueuePromotions(0, queued, '2026-08-16');
-    expect(promotions).toHaveLength(7);
-    expect(promotions[0].week_started).toBe('2026-08-17');
-    expect(promotions[1].week_started).toBe('2026-08-24');
-    expect(promotions[6].week_started).toBe('2026-09-28');
-  });
-
-  it('promotes one more today when Daily has fewer than 7', () => {
-    const promotions = planQueuePromotions(3, queued, '2026-08-16');
+  it('promotes exactly one chunk at next Monday for a brand-new learner', () => {
+    const promotions = planQueuePromotions({
+      queued,
+      today,
+      dailyTrackers: [],
+      startedChunkIds: new Set(),
+    });
     expect(promotions).toHaveLength(1);
     expect(promotions[0].chunk.id).toBe('c1');
-    expect(promotions[0].week_started).toBe('2026-08-16');
+    expect(promotions[0].week_started).toBe('2026-08-17');
+  });
+
+  it('starts immediately when a brand-new learner begins on a Monday', () => {
+    const promotions = planQueuePromotions({
+      queued,
+      today: '2026-08-17',
+      dailyTrackers: [],
+      startedChunkIds: new Set(),
+    });
+    expect(promotions).toHaveLength(1);
+    expect(promotions[0].week_started).toBe('2026-08-17');
+  });
+
+  it('blocks promotion while a due Daily chunk has never been practiced', () => {
+    const dailyTrackers = [tracker({ id: '1', chunk_id: 'c1', phase: 'DAILY', week_started: '2026-08-10' })];
+    const promotions = planQueuePromotions({
+      queued,
+      today,
+      dailyTrackers,
+      startedChunkIds: new Set(),
+    });
+    expect(promotions).toEqual([]);
+  });
+
+  it('blocks repeated promotions on the same day while the current chunk is un-started', () => {
+    const first = planQueuePromotions({
+      queued,
+      today: '2026-08-17',
+      dailyTrackers: [],
+      startedChunkIds: new Set(),
+    });
+    expect(first).toHaveLength(1);
+
+    const afterFirstPromotion = [
+      tracker({ id: '1', chunk_id: 'c1', phase: 'DAILY', week_started: first[0].week_started }),
+    ];
+    for (let i = 0; i < 4; i += 1) {
+      expect(
+        planQueuePromotions({
+          queued: queued.slice(1),
+          today: '2026-08-17',
+          dailyTrackers: afterFirstPromotion,
+          startedChunkIds: new Set(),
+        }),
+      ).toEqual([]);
+    }
+  });
+
+  it('promotes exactly one at next Monday after the current chunk has been practiced', () => {
+    const dailyTrackers = [tracker({ id: '1', chunk_id: 'c1', phase: 'DAILY', week_started: '2026-08-10' })];
+    const promotions = planQueuePromotions({
+      queued: queued.slice(1),
+      today,
+      dailyTrackers,
+      startedChunkIds: new Set([completion('c1').chunk_id]),
+    });
+    expect(promotions).toHaveLength(1);
+    expect(promotions[0].chunk.id).toBe('c2');
+    expect(promotions[0].week_started).toBe('2026-08-17');
+  });
+
+  it('gives an idle learner nothing new until they resume practicing', () => {
+    const dailyTrackers = [tracker({ id: '1', chunk_id: 'c1', phase: 'DAILY', week_started: '2026-08-10' })];
+    expect(
+      planQueuePromotions({
+        queued: queued.slice(1),
+        today: '2026-08-23',
+        dailyTrackers,
+        startedChunkIds: new Set(),
+      }),
+    ).toEqual([]);
+  });
+
+  it('promotes one chunk the Monday after an idle learner resumes practicing', () => {
+    const dailyTrackers = [tracker({ id: '1', chunk_id: 'c1', phase: 'DAILY', week_started: '2026-08-10' })];
+    const promotions = planQueuePromotions({
+      queued: queued.slice(1),
+      today: '2026-08-23',
+      dailyTrackers,
+      startedChunkIds: new Set([completion('c1', '2026-08-23').chunk_id]),
+    });
+    expect(promotions).toHaveLength(1);
+    expect(promotions[0].chunk.id).toBe('c2');
+    expect(promotions[0].week_started).toBe('2026-08-24');
   });
 
   it('promotes nothing when Daily is full', () => {
-    expect(planQueuePromotions(7, queued, '2026-08-16')).toEqual([]);
+    const dailyTrackers = [1, 2, 3, 4, 5, 6, 7].map((n) =>
+      tracker({ id: `${n}`, chunk_id: `c${n}`, phase: 'DAILY', week_started: '2026-08-10' }),
+    );
+    expect(
+      planQueuePromotions({
+        queued: [chunk('c8', 8)],
+        today,
+        dailyTrackers,
+        startedChunkIds: new Set(dailyTrackers.map((t) => t.chunk_id)),
+      }),
+    ).toEqual([]);
+  });
+
+  it('blocks a second promotion on the same Monday after the first is practiced', () => {
+    const monday = '2026-08-17';
+    const first = planQueuePromotions({
+      queued,
+      today: monday,
+      dailyTrackers: [],
+      startedChunkIds: new Set(),
+    });
+    expect(first).toHaveLength(1);
+
+    const afterFirstPromotion = [
+      tracker({ id: '1', chunk_id: 'c1', phase: 'DAILY', week_started: first[0].week_started }),
+    ];
+    expect(
+      planQueuePromotions({
+        queued: queued.slice(1),
+        today: monday,
+        dailyTrackers: afterFirstPromotion,
+        startedChunkIds: new Set([completion('c1', monday).chunk_id]),
+      }),
+    ).toEqual([]);
+  });
+
+  it('promotes exactly one chunk on the Monday after a same-day promotion was practiced', () => {
+    const firstMonday = '2026-08-17';
+    const secondMonday = '2026-08-24';
+    const dailyTrackers = [tracker({ id: '1', chunk_id: 'c1', phase: 'DAILY', week_started: firstMonday })];
+    const promotions = planQueuePromotions({
+      queued: queued.slice(1),
+      today: secondMonday,
+      dailyTrackers,
+      startedChunkIds: new Set([completion('c1', firstMonday).chunk_id]),
+    });
+    expect(promotions).toHaveLength(1);
+    expect(promotions[0].chunk.id).toBe('c2');
+    expect(promotions[0].week_started).toBe(secondMonday);
+  });
+
+  it('blocks promotion while a future-dated Daily tracker is pending', () => {
+    const dailyTrackers = [
+      tracker({ id: '1', chunk_id: 'c1', phase: 'DAILY', week_started: '2026-08-10' }),
+      tracker({ id: '2', chunk_id: 'c2', phase: 'DAILY', week_started: '2026-08-24' }),
+    ];
+    expect(
+      planQueuePromotions({
+        queued: queued.slice(2),
+        today,
+        dailyTrackers,
+        startedChunkIds: new Set(['c1', 'c2']),
+      }),
+    ).toEqual([]);
   });
 });
 

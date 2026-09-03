@@ -265,9 +265,30 @@ export async function syncSchedule(state: BookState): Promise<BookState> {
     if (error) throw error;
   }
 
-  const dailyCount = next.filter((tracker) => tracker.phase === 'DAILY').length;
+  const dailyTrackers = next.filter((tracker) => tracker.phase === 'DAILY');
   const queued = state.chunks.filter((chunk) => !next.some((tracker) => tracker.chunk_id === chunk.id));
-  const promotions = planQueuePromotions(dailyCount, queued, state.today);
+  const startedChunkIds = new Set(state.completions.map((completion) => completion.chunk_id));
+  const dueDailyChunkIds = dailyTrackers
+    .filter((tracker) => tracker.week_started <= state.today)
+    .map((tracker) => tracker.chunk_id);
+  const maybeUnstarted = dueDailyChunkIds.filter((chunkId) => !startedChunkIds.has(chunkId));
+  if (maybeUnstarted.length > 0) {
+    const { data, error: startedError } = await client
+      .from('daily_completions')
+      .select('chunk_id')
+      .eq('user_id', state.profile.id)
+      .in('chunk_id', maybeUnstarted);
+    if (startedError) throw startedError;
+    for (const row of data ?? []) {
+      startedChunkIds.add(row.chunk_id);
+    }
+  }
+  const promotions = planQueuePromotions({
+    queued,
+    today: state.today,
+    dailyTrackers,
+    startedChunkIds,
+  });
 
   const inserted: MemorizationTracker[] = [];
   if (promotions.length) {

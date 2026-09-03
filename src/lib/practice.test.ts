@@ -125,12 +125,17 @@ describe('practice queues', () => {
     expect(nextQueuedChunk(loaded.chunks, loaded.trackers)?.id).toBe('queued');
   });
 
-  it('leaves empty-Daily Monday batching unchanged after a completion', () => {
+  it('promotes exactly one queued chunk at next Monday for a brand-new learner', () => {
     const queued = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => chunk(`c${n}`, n));
-    const promotions = planQueuePromotions(0, queued, '2026-08-16');
-    expect(promotions).toHaveLength(7);
+    const promotions = planQueuePromotions({
+      queued,
+      today: '2026-08-16',
+      dailyTrackers: [],
+      startedChunkIds: new Set(),
+    });
+    expect(promotions).toHaveLength(1);
+    expect(promotions[0].chunk.id).toBe('c1');
     expect(promotions[0].week_started).toBe('2026-08-17');
-    expect(promotions[1].week_started).toBe('2026-08-24');
   });
 
   it('increments session_number for extra reps without replacing session 1', () => {
