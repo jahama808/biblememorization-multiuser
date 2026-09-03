@@ -245,6 +245,24 @@ export async function saveNewBook(input: {
   return book as BookSelection;
 }
 
+/** Existence check: at most one `daily_completions` row per chunk (any date). */
+export async function findPracticedChunkIds(userId: string, chunkIds: string[]): Promise<Set<string>> {
+  const client = requireSupabase();
+  const practiced = new Set<string>();
+  for (const chunkId of chunkIds) {
+    const { data, error } = await client
+      .from('daily_completions')
+      .select('chunk_id')
+      .eq('user_id', userId)
+      .eq('chunk_id', chunkId)
+      .limit(1);
+    if (error) throw error;
+    const found = data?.[0]?.chunk_id;
+    if (found) practiced.add(found);
+  }
+  return practiced;
+}
+
 export async function syncSchedule(state: BookState): Promise<BookState> {
   const client = requireSupabase();
   const { next, changed } = applyGraduations(state.trackers, state.today);
@@ -273,14 +291,9 @@ export async function syncSchedule(state: BookState): Promise<BookState> {
     .map((tracker) => tracker.chunk_id);
   const maybeUnstarted = dueDailyChunkIds.filter((chunkId) => !startedChunkIds.has(chunkId));
   if (maybeUnstarted.length > 0) {
-    const { data, error: startedError } = await client
-      .from('daily_completions')
-      .select('chunk_id')
-      .eq('user_id', state.profile.id)
-      .in('chunk_id', maybeUnstarted);
-    if (startedError) throw startedError;
-    for (const row of data ?? []) {
-      startedChunkIds.add(row.chunk_id);
+    const practiced = await findPracticedChunkIds(state.profile.id, maybeUnstarted);
+    for (const chunkId of practiced) {
+      startedChunkIds.add(chunkId);
     }
   }
   const promotions = planQueuePromotions({

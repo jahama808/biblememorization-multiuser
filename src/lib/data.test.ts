@@ -14,6 +14,7 @@ import {
   completionHistoryEndDate,
   completionHistoryStartDate,
   dedupePracticeItems,
+  findPracticedChunkIds,
   isUniqueViolation,
   matchesCompletionHistoryWindow,
   summarizeState,
@@ -92,7 +93,7 @@ type QueryResult = { data: unknown; error: PostgrestError | null };
 
 function createQueryChain(result: QueryResult | (() => QueryResult | Promise<QueryResult>)) {
   const chain: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'gte', 'lte', 'in', 'order', 'insert']) {
+  for (const method of ['select', 'eq', 'gte', 'lte', 'in', 'limit', 'order', 'insert']) {
     chain[method] = vi.fn(() => chain);
   }
   chain.then = (
@@ -207,6 +208,62 @@ describe('completion history window', () => {
     });
 
     expect(summarizeState(truncated).streak).toBeLessThan(streakDays);
+  });
+});
+
+describe('findPracticedChunkIds', () => {
+  beforeEach(() => {
+    mockFrom.mockReset();
+  });
+
+  it('asks for at most one row per chunk and scopes by user_id', async () => {
+    const limits: number[] = [];
+    const userIds: string[] = [];
+    const chunkIds: string[] = [];
+    const inFilters: unknown[] = [];
+
+    mockFrom.mockImplementation((table: string) => {
+      expect(table).toBe('daily_completions');
+      let currentChunk = '';
+      const chain = createQueryChain(() => ({
+        data: currentChunk === 'c1' ? [{ chunk_id: 'c1' }] : [],
+        error: null,
+      }));
+      chain.eq = vi.fn((column: string, value: string) => {
+        if (column === 'user_id') userIds.push(value);
+        if (column === 'chunk_id') {
+          currentChunk = value;
+          chunkIds.push(value);
+        }
+        return chain;
+      });
+      chain.in = vi.fn((column: string, values: unknown) => {
+        inFilters.push({ column, values });
+        return chain;
+      });
+      chain.limit = vi.fn((count: number) => {
+        limits.push(count);
+        return chain;
+      });
+      return chain;
+    });
+
+    const practiced = await findPracticedChunkIds('u', ['c1', 'c2']);
+
+    expect(practiced).toEqual(new Set(['c1']));
+    expect(userIds).toEqual(['u', 'u']);
+    expect(chunkIds).toEqual(['c1', 'c2']);
+    expect(limits).toEqual([1, 1]);
+    expect(inFilters).toEqual([]);
+    expect(mockFrom).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns an empty set when no chunk has a completion row', async () => {
+    mockFrom.mockImplementation(() =>
+      createQueryChain({ data: [], error: null }),
+    );
+
+    await expect(findPracticedChunkIds('u', ['c9'])).resolves.toEqual(new Set());
   });
 });
 
