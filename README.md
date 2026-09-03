@@ -24,7 +24,7 @@ Vite · React · TypeScript · Tailwind CSS · React Router · Supabase (Auth + 
   - **Daily** every day; graduate to Weekly after 49 days from `week_started`
   - **Weekly** on an assigned `review_day_of_week`; graduate to Quarterly after 213 days from `phase_start_date`
   - **Quarterly** on an assigned `quarterly_review_sunday` (terminal)
-- Queue: unused chunks wait. If Daily is empty, promote up to 7 (staggered weekly, starting next Monday). If Daily has fewer than 7, promote 1 more.
+- Queue: unused chunks wait. At most one queued chunk is promoted at a time, with `week_started = nextMonday(today)`. Promotion happens only when every currently-due Daily chunk has been practiced at least once and no Daily chunk is already pending in the future. See `src/lib/schedule.ts`.
 - Home/stats: Daily streak, phase counts, upcoming graduations, next queued chunk, book progress
 - Default timezone `Pacific/Honolulu`, stored on `user_profiles`
 

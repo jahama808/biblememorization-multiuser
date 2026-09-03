@@ -121,6 +121,11 @@ export type QueuePromotion = {
  *    One completion ever is enough; this is "have they begun it".
  * 4. No pending DAILY tracker (week_started > today). Keeps exactly one
  *    chunk in flight and prevents two chunks landing on the same Monday.
+ * 5. No DAILY tracker already has week_started = nextMonday(today). At most
+ *    one queue-promoted chunk may land on a given Monday, even if the learner
+ *    practices every due chunk that same day. Book-setup onboarding may still
+ *    create several DAILY trackers with the same week_started; that path never
+ *    calls this function.
  *
  * On promotion, week_started = nextMonday(today). If today is Monday, that
  * is today; otherwise the next Monday. A learner gets at most one new chunk
@@ -146,7 +151,10 @@ export function planQueuePromotions(input: QueuePromotionInput): QueuePromotion[
   const dueDaily = dailyTrackers.filter((tracker) => tracker.week_started <= today);
   if (!dueDaily.every((tracker) => startedChunkIds.has(tracker.chunk_id))) return [];
 
-  return [{ chunk: queued[0], week_started: nextMonday(today) }];
+  const promotionMonday = nextMonday(today);
+  if (dailyTrackers.some((tracker) => tracker.week_started === promotionMonday)) return [];
+
+  return [{ chunk: queued[0], week_started: promotionMonday }];
 }
 
 export function trackerDraftFromPromotion(userChunkId: string, weekStarted: string): TrackerDraft {
