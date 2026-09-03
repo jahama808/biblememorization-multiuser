@@ -4,14 +4,17 @@ import { FlipCard } from '../components/FlipCard';
 import { Button, Card, ErrorNote, Screen } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { loadBookState, summarizeState, syncSchedule, writePracticeCompletions, type BookState } from '../lib/data';
-import { practiceModeFromSearch, selectPracticeQueue } from '../lib/practice';
+import { canPracticeAgain, practiceModeFromSearch, selectPracticeQueue } from '../lib/practice';
 import type { PracticeItem } from '../lib/types';
 
 export function PracticePage() {
   const { user } = useAuth();
   const location = useLocation();
   const [state, setState] = useState<BookState | null>(null);
-  const [dueItems, setDueItems] = useState<PracticeItem[]>([]);
+  const [practiceSource, setPracticeSource] = useState<{ due: PracticeItem[]; dueRemaining: PracticeItem[] }>({
+    due: [],
+    dueRemaining: [],
+  });
   const [queue, setQueue] = useState<PracticeItem[]>([]);
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -32,7 +35,7 @@ export function PracticePage() {
         const mode = practiceModeFromSearch(location.search);
         const items = selectPracticeQueue(summary, mode);
         setState(synced);
-        setDueItems(summary.due);
+        setPracticeSource({ due: summary.due, dueRemaining: summary.dueRemaining });
         setQueue(items);
         setIndex(0);
         setFlipped(false);
@@ -50,10 +53,10 @@ export function PracticePage() {
 
   const current = queue[index] ?? null;
   const progress = useMemo(() => (queue.length ? `${index + 1} of ${queue.length}` : '0 of 0'), [index, queue.length]);
-  const reviewAvailable = dueItems.length > 0;
+  const reviewAvailable = canPracticeAgain(practiceSource);
 
   function startAgain() {
-    setQueue(dueItems);
+    setQueue(practiceSource.due);
     setIndex(0);
     setFlipped(false);
     setDone(false);
@@ -74,7 +77,7 @@ export function PracticePage() {
       const synced = await syncSchedule(refreshed);
       const summary = summarizeState(synced);
       setState(synced);
-      setDueItems(summary.due);
+      setPracticeSource({ due: summary.due, dueRemaining: summary.dueRemaining });
       setDone(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save completions');
