@@ -1,4 +1,5 @@
 import { addDays, dayOfWeek, nextSundayOnOrAfter, todayInTimeZone } from './dates';
+import type { PostgrestError } from '@supabase/supabase-js';
 import { completedChunkIdsOnDate, nextSessionByChunk, remainingDueItems } from './practice';
 import {
   applyGraduations,
@@ -22,6 +23,23 @@ import type {
   UserProfile,
 } from './types';
 import { DEFAULT_TIMEZONE } from './types';
+
+/** Days of completion history loaded for streak and “completed today” checks. */
+export const COMPLETION_HISTORY_DAYS = 400;
+
+export function completionHistoryStartDate(today: string): string {
+  return addDays(today, -COMPLETION_HISTORY_DAYS);
+}
+
+export function completionHistoryEndDate(today: string): string {
+  return today;
+}
+
+export function matchesCompletionHistoryWindow(completedDate: string, today: string): boolean {
+  return (
+    completedDate >= completionHistoryStartDate(today) && completedDate <= completionHistoryEndDate(today)
+  );
+}
 
 export type BookState = {
   profile: UserProfile;
@@ -95,8 +113,9 @@ export async function loadBookState(userId: string, todayHint?: string): Promise
     .from('daily_completions')
     .select('id, user_id, chunk_id, completed_date, phase_at_completion, session_number')
     .eq('user_id', userId)
-    .order('completed_date', { ascending: false })
-    .limit(400);
+    .gte('completed_date', completionHistoryStartDate(today))
+    .lte('completed_date', completionHistoryEndDate(today))
+    .order('completed_date', { ascending: false });
   if (completionError) throw completionError;
 
   return {
@@ -269,37 +288,103 @@ export async function syncSchedule(state: BookState): Promise<BookState> {
   return { ...state, trackers: [...next, ...inserted] };
 }
 
-export async function writePracticeCompletions(
+export const PRACTICE_SAVE_FAILED_MESSAGE =
+  'Could not save your practice session. Please try again in a moment.';
+
+export function dedupePracticeItems(items: { chunkId: string; phase: Phase }[]): { chunkId: string; phase: Phase }[] {
+  const byChunk = new Map<string, Phase>();
+  for (const item of items) {
+    byChunk.set(item.chunkId, item.phase);
+  }
+  return [...byChunk.entries()].map(([chunkId, phase]) => ({ chunkId, phase }));
+}
+
+export function isUniqueViolation(error: PostgrestError | null): boolean {
+  return error?.code === '23505';
+}
+
+function logPracticeSaveError(cause: unknown): void {
+  console.error('Practice completion save failed', cause);
+}
+
+function throwPracticeSaveFailed(cause: unknown): never {
+  logPracticeSaveError(cause);
+  throw new Error(PRACTICE_SAVE_FAILED_MESSAGE);
+}
+
+export function buildPracticeCompletionRows(
   userId: string,
   items: { chunkId: string; phase: Phase }[],
   today: string,
-): Promise<void> {
-  if (items.length === 0) return;
-  const client = requireSupabase();
-
+  existing: { chunk_id: string; session_number: number }[],
+): {
+  user_id: string;
+  chunk_id: string;
+  completed_date: string;
+  phase_at_completion: Phase;
+  session_number: number;
+}[] {
   const chunkIds = items.map((item) => item.chunkId);
-  const { data: existing, error: existingError } = await client
-    .from('daily_completions')
-    .select('chunk_id, session_number')
-    .eq('user_id', userId)
-    .eq('completed_date', today)
-    .in('chunk_id', chunkIds);
-  if (existingError) throw existingError;
-
-  // Extra practice writes session 2, 3, … for the same day. It does not
-  // update trackers or due dates — see src/lib/practice.ts.
-  const sessionByChunk = nextSessionByChunk(existing ?? [], chunkIds);
-
-  const rows = items.map((item) => ({
+  const sessionByChunk = nextSessionByChunk(existing, chunkIds);
+  return items.map((item) => ({
     user_id: userId,
     chunk_id: item.chunkId,
     completed_date: today,
     phase_at_completion: item.phase,
     session_number: sessionByChunk.get(item.chunkId) ?? 1,
   }));
+}
 
-  const { error } = await client.from('daily_completions').insert(rows);
+async function loadTodaySessions(
+  userId: string,
+  today: string,
+  chunkIds: string[],
+): Promise<{ chunk_id: string; session_number: number }[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('daily_completions')
+    .select('chunk_id, session_number')
+    .eq('user_id', userId)
+    .eq('completed_date', today)
+    .in('chunk_id', chunkIds);
   if (error) throw error;
+  return data ?? [];
+}
+
+export async function writePracticeCompletions(
+  userId: string,
+  items: { chunkId: string; phase: Phase }[],
+  today: string,
+): Promise<void> {
+  const uniqueItems = dedupePracticeItems(items);
+  if (uniqueItems.length === 0) return;
+
+  const client = requireSupabase();
+  const chunkIds = uniqueItems.map((item) => item.chunkId);
+
+  async function insertBatch(): Promise<PostgrestError | null> {
+    const existing = await loadTodaySessions(userId, today, chunkIds);
+    const rows = buildPracticeCompletionRows(userId, uniqueItems, today, existing);
+    const { error } = await client.from('daily_completions').insert(rows);
+    return error;
+  }
+
+  try {
+    // Extra practice writes session 2, 3, … for the same day. It does not
+    // update trackers or due dates — see src/lib/practice.ts.
+    let error = await insertBatch();
+    if (isUniqueViolation(error)) {
+      error = await insertBatch();
+    }
+    if (error) {
+      throwPracticeSaveFailed(error);
+    }
+  } catch (cause) {
+    if (cause instanceof Error && cause.message === PRACTICE_SAVE_FAILED_MESSAGE) {
+      throw cause;
+    }
+    throwPracticeSaveFailed(cause);
+  }
 }
 
 export function summarizeState(state: BookState) {
